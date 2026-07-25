@@ -907,6 +907,94 @@ kbd {
   100% { transform: translateY(0); opacity: 1; }
 }
 
+/* Aerospace Status Indicators Panel */
+.hud-status-panel {
+  position: absolute;
+  top: 80px;
+  right: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 10;
+}
+
+.hud-ind {
+  color: #556677;
+  transition: all 0.2s ease;
+  letter-spacing: 1px;
+}
+
+.hud-ind.active-green {
+  color: var(--neon-green);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+}
+
+.hud-ind.active-blue {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+
+.hud-ind.active-red {
+  color: #ff3344;
+  text-shadow: 0 0 10px rgba(255, 51, 68, 0.6);
+}
+
+.hud-ind.blink {
+  animation: blinkWarning 0.4s infinite alternate;
+}
+
+/* Virtual Mouse Aim Crosshair */
+.mouse-crosshair {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 28px; height: 28px;
+  margin-top: -14px; margin-left: -14px;
+  color: var(--neon-cyan);
+  font-size: 24px;
+  line-height: 28px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 15;
+  text-shadow: 0 0 12px var(--neon-cyan);
+  transition: transform 0.05s linear;
+}
+
+/* Pitch Ladder / Artificial Horizon */
+.pitch-ladder {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 140px; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0,240,255,0.7), transparent);
+  box-shadow: 0 0 8px var(--neon-cyan);
+  pointer-events: none;
+  z-index: 5;
+  transition: transform 0.05s linear;
+}
+
+.pitch-ladder::before, .pitch-ladder::after {
+  content: '';
+  position: absolute;
+  width: 20px; height: 6px;
+  border-top: 2px solid var(--neon-cyan);
+}
+.pitch-ladder::before { left: 10px; border-left: 2px solid var(--neon-cyan); }
+.pitch-ladder::after { right: 10px; border-right: 2px solid var(--neon-cyan); }
+
+/* Crash Destruction Modal */
+.crash-panel {
+  border-color: #ff3344 !important;
+  box-shadow: 0 0 60px rgba(255, 51, 68, 0.4) !important;
+}
+
+.neon-red {
+  color: #ff3344;
+  text-shadow: 0 0 15px rgba(255, 51, 68, 0.8);
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .hub-content { grid-template-columns: 1fr; }

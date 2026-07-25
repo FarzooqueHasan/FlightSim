@@ -98,6 +98,18 @@ export class MainGameHub {
       onExit: () => this.exitSimulator()
     });
 
+    // Read selected livery
+    const liverySelect = document.getElementById('livery-select');
+    const liveryVal = liverySelect ? liverySelect.value : 'titanium';
+    const liveries = {
+      titanium: { body: 0xdcdec, accent: 0x0044aa },
+      stealth: { body: 0x1e222a, accent: 0xff007b },
+      navy: { body: 0x0a1a3a, accent: 0xffaa00 },
+      cyber: { body: 0x440066, accent: 0x00ff44 }
+    };
+    const selectedLivery = liveries[liveryVal] || liveries.titanium;
+    flightMinigame.sceneSetup.setLivery(selectedLivery.body, selectedLivery.accent);
+
     flightMinigame.start();
   }
 

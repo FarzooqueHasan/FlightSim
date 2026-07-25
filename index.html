@@ -71,8 +71,19 @@
                 <label for="sim-mode-select">SELECT SIMULATION MODE:</label>
                 <select id="sim-mode-select" class="mode-dropdown">
                   <option value="checkpoint_race">🏁 Checkpoint Race (Timed Course)</option>
+                  <option value="runway_takeoff">🛬 Runway Takeoff & Landing Trial (Traffic Circuit)</option>
                   <option value="free_flight">🕊️ Free Flight (Practice & Explore)</option>
                   <option value="obstacle_survival">⚡ Obstacle Survival (High-Speed Gauntlet)</option>
+                </select>
+              </div>
+
+              <div class="mode-selector" style="margin-top: 10px;">
+                <label for="livery-select">AIRCRAFT LIVERY & FINISH:</label>
+                <select id="livery-select" class="mode-dropdown">
+                  <option value="titanium">⚪ Titanium Silver / Royal Blue</option>
+                  <option value="stealth">⚫ Carbon Stealth / Cyber Magenta</option>
+                  <option value="navy">🔵 Royal Navy / Gold Stripe</option>
+                  <option value="cyber">🟣 Neon Cyberpunk / Lime Pulse</option>
                 </select>
               </div>
 
@@ -225,7 +236,15 @@
           <div class="crosshair-circle"></div>
           <div class="crosshair-dot"></div>
           <div class="pitch-ladder" id="hud-pitch-ladder"></div>
+          <div id="hud-mouse-crosshair" class="mouse-crosshair hidden">⊕</div>
           <div id="hud-warning-msg" class="warning-msg hidden">⚠️ STALL WARNING — INCREASE THROTTLE ⚠️</div>
+        </div>
+
+        <!-- Aerospace Status Indicator Panel -->
+        <div id="hud-status-panel" class="hud-status-panel glass-box">
+          <span id="ind-gear" class="hud-ind active-green">GEAR: DOWN</span>
+          <span id="ind-flaps" class="hud-ind">FLAPS: UP</span>
+          <span id="ind-brk" class="hud-ind">BRK: OFF</span>
         </div>
 
         <!-- Control Instructions Popup (Auto-dismisses) -->
@@ -236,11 +255,12 @@
             <div><kbd>A</kbd> / <kbd>D</kbd> — Roll Left / Right</div>
             <div><kbd>Q</kbd> / <kbd>E</kbd> — Yaw Left / Right</div>
             <div><kbd>SHIFT</kbd> / <kbd>CTRL</kbd> — Throttle Up / Down</div>
+            <div><kbd>G</kbd> / <kbd>F</kbd> — Landing Gear / Flaps</div>
+            <div><kbd>B</kbd> / <kbd>M</kbd> — Airbrakes / Mouse Aim Toggle</div>
             <div><kbd>SPACE</kbd> — Hyper-Boost (Regenerating)</div>
-            <div><kbd>C</kbd> — Toggle Camera (Chase / Cockpit)</div>
-            <div><kbd>ESC</kbd> — Abort / Exit Simulation</div>
+            <div><kbd>C</kbd> / <kbd>ESC</kbd> — Camera Mode / Abort Sim</div>
           </div>
-          <p class="instruction-hint">Fly through glowing rings in sequence! Keep speed above 60 KTS to prevent stall drift.</p>
+          <p class="instruction-hint">Fly through glowing rings in sequence! Keep speed above 65 KTS to prevent stall drift.</p>
         </div>
 
         <!-- Run Completion / Results Modal -->
@@ -257,6 +277,24 @@
             <div class="results-actions">
               <button id="btn-results-return" class="btn btn-primary btn-glow">COLLECT REWARD & RETURN TO HANGAR ➔</button>
               <button id="btn-results-retry" class="btn btn-secondary">RETRY SIMULATION 🔄</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Crash Destruction Report Modal -->
+        <div id="minigame-crash-modal" class="results-modal hidden">
+          <div class="results-card glass-panel crash-panel">
+            <h2 class="neon-red" style="color: #ff3344; text-shadow: 0 0 15px rgba(255,51,68,0.8);">AIRCRAFT DESTROYED!</h2>
+            <p class="crash-subtitle" style="color: #a0aab8; font-size: 13px; letter-spacing: 2px; margin-bottom: 20px;">TELEMETRY ANALYSIS AT IMPACT</p>
+            <div class="results-stats">
+              <div class="res-row"><span>CAUSE OF CRASH:</span> <strong id="crash-reason" style="color: #ff3344;">TERRAIN COLLISION</strong></div>
+              <div class="res-row"><span>IMPACT SPEED:</span> <strong id="crash-speed">180 KTS</strong></div>
+              <div class="res-row"><span>MAX G-LOAD:</span> <strong id="crash-g">8.4 G</strong></div>
+              <div class="res-row"><span>FLIGHT TIME:</span> <strong id="crash-time">12.4s</strong></div>
+            </div>
+            <div class="results-actions">
+              <button id="btn-crash-retry" class="btn btn-primary btn-glow" style="background: linear-gradient(135deg, #cc0022, #ff3344); box-shadow: 0 0 20px rgba(255,51,68,0.5);">RESPAWN & RETRY 🔄</button>
+              <button id="btn-crash-return" class="btn btn-secondary">ABORT TO HANGAR ✕</button>
             </div>
           </div>
         </div>

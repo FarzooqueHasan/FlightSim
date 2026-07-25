@@ -46,14 +46,32 @@ export class HUD {
     this.resRewardEl = document.getElementById('res-reward');
     this.btnReturn = document.getElementById('btn-results-return');
     this.btnRetry = document.getElementById('btn-results-retry');
+
+    // Status Indicators, Crosshair & Pitch Ladder
+    this.gearIndEl = document.getElementById('ind-gear');
+    this.flapsIndEl = document.getElementById('ind-flaps');
+    this.airbrakeIndEl = document.getElementById('ind-brk');
+    this.crosshairEl = document.getElementById('hud-mouse-crosshair');
+    this.pitchLadderEl = document.getElementById('hud-pitch-ladder');
+
+    // Crash Modal
+    this.crashModalEl = document.getElementById('minigame-crash-modal');
+    this.crashReasonEl = document.getElementById('crash-reason');
+    this.crashSpeedEl = document.getElementById('crash-speed');
+    this.crashGEl = document.getElementById('crash-g');
+    this.crashTimeEl = document.getElementById('crash-time');
+    this.btnCrashRetry = document.getElementById('btn-crash-retry');
+    this.btnCrashExit = document.getElementById('btn-crash-return');
   }
 
   reset(mode = 'checkpoint_race', onExitCallback) {
     if (this.resultsModalEl) this.resultsModalEl.classList.add('hidden');
+    if (this.crashModalEl) this.crashModalEl.classList.add('hidden');
     if (this.warningEl) this.warningEl.classList.add('hidden');
 
     const modeNames = {
       checkpoint_race: '🏁 CHECKPOINT RACE',
+      runway_takeoff: '🛬 RUNWAY TAKEOFF & LANDING',
       free_flight: '🕊️ FREE FLIGHT (PRACTICE)',
       obstacle_survival: '⚡ OBSTACLE SURVIVAL'
     };
@@ -77,7 +95,7 @@ export class HUD {
   /**
    * Updates all HUD gauges and 2D radar per frame.
    */
-  update(dt, physics, checkpointMgr, elapsedMs) {
+  update(dt, physics, checkpointMgr, elapsedMs, inputState = null) {
     // 1. Auto-dismiss instructions
     if (this.instructionTimer > 0) {
       this.instructionTimer -= dt;
@@ -169,7 +187,42 @@ export class HUD {
       this.comboEl.style.display = checkpointMgr.combo > 1 ? 'inline-block' : 'none';
     }
 
-    // 7. Update 2D Radar Minimap
+    // 7. Status Indicators (Gear, Flaps, Airbrakes)
+    if (this.gearIndEl) {
+      this.gearIndEl.textContent = `GEAR: ${physics.gearDown ? 'DOWN' : 'UP'}`;
+      this.gearIndEl.className = physics.gearDown ? 'hud-ind active-green' : 'hud-ind';
+    }
+    if (this.flapsIndEl) {
+      const flapLabels = ['FLAPS: UP (0%)', 'FLAPS: TO (20%)', 'FLAPS: LDG (40%)'];
+      this.flapsIndEl.textContent = flapLabels[physics.flapsLevel] || flapLabels[0];
+      this.flapsIndEl.className = physics.flapsLevel > 0 ? 'hud-ind active-blue' : 'hud-ind';
+    }
+    if (this.airbrakeIndEl) {
+      this.airbrakeIndEl.textContent = `BRK: ${physics.airbrakeActive ? 'ON' : 'OFF'}`;
+      this.airbrakeIndEl.className = physics.airbrakeActive ? 'hud-ind active-red blink' : 'hud-ind';
+    }
+
+    // 8. Virtual Mouse Aim Crosshair
+    if (this.crosshairEl && inputState) {
+      if (inputState.mouseAim) {
+        this.crosshairEl.classList.remove('hidden');
+        const xPx = inputState.mouseX * 180;
+        const yPx = inputState.mouseY * 180;
+        this.crosshairEl.style.transform = `translate(${xPx}px, ${yPx}px)`;
+      } else {
+        this.crosshairEl.classList.add('hidden');
+      }
+    }
+
+    // 9. Pitch Ladder / Artificial Horizon
+    if (this.pitchLadderEl) {
+      const pitchDeg = -(physics.euler.x * (180 / Math.PI));
+      const rollDeg = -(physics.euler.z * (180 / Math.PI));
+      const yOffset = pitchDeg * 3.5;
+      this.pitchLadderEl.style.transform = `translate(-50%, -50%) rotate(${rollDeg}deg) translateY(${yOffset}px)`;
+    }
+
+    // 10. Update 2D Radar Minimap
     this.renderMinimap(physics, checkpointMgr);
   }
 
@@ -264,6 +317,7 @@ export class HUD {
     
     const modeNames = {
       checkpoint_race: '🏁 Checkpoint Race',
+      runway_takeoff: '🛬 Runway Takeoff & Landing',
       free_flight: '🕊️ Free Flight',
       obstacle_survival: '⚡ Obstacle Survival'
     };
@@ -294,5 +348,29 @@ export class HUD {
     }
 
     this.resultsModalEl.classList.remove('hidden');
+  }
+
+  showCrashModal(payload, onRetry, onExit) {
+    if (this.crashModalEl) {
+      if (this.crashReasonEl) this.crashReasonEl.textContent = payload.reason || "DESTROYED";
+      if (this.crashSpeedEl) this.crashSpeedEl.textContent = `${payload.speed} KTS`;
+      if (this.crashGEl) this.crashGEl.textContent = `${payload.maxG} G`;
+      if (this.crashTimeEl) this.crashTimeEl.textContent = `${payload.timeSec}s`;
+
+      if (this.btnCrashRetry && onRetry) {
+        this.btnCrashRetry.onclick = () => {
+          this.crashModalEl.classList.add('hidden');
+          onRetry();
+        };
+      }
+      if (this.btnCrashExit && onExit) {
+        this.btnCrashExit.onclick = () => {
+          this.crashModalEl.classList.add('hidden');
+          onExit();
+        };
+      }
+
+      this.crashModalEl.classList.remove('hidden');
+    }
   }
 }

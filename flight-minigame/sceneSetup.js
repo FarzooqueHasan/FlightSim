@@ -32,6 +32,14 @@ export class SceneSetup {
     // Smoothed camera tracking
     this.camWorldPos = new THREE.Vector3();
     this.camWorldLookAt = new THREE.Vector3();
+
+    // Livery Materials & Crash Effects
+    this.bodyMat = null;
+    this.accentMat = null;
+    this.explosionFireball = null;
+    this.explosionLight = null;
+    this.debrisParticles = [];
+    this.smokeParticles = [];
   }
 
   init(containerDOM) {
@@ -491,7 +499,7 @@ export class SceneSetup {
     this.aircraftGroup = new THREE.Group();
 
     // Main body material (Sleek civilian/military silver-white with high gloss)
-    const bodyMat = new THREE.MeshStandardMaterial({
+    this.bodyMat = new THREE.MeshStandardMaterial({
       color: 0xdcdec,
       roughness: 0.25,
       metalness: 0.65,
@@ -499,11 +507,14 @@ export class SceneSetup {
     });
 
     // Royal blue accent wing stripes
-    const accentMat = new THREE.MeshStandardMaterial({
+    this.accentMat = new THREE.MeshStandardMaterial({
       color: 0x0044aa,
       roughness: 0.3,
       metalness: 0.5
     });
+
+    const bodyMat = this.bodyMat;
+    const accentMat = this.accentMat;
 
     // 1. Fuselage
     const noseGeo = new THREE.ConeGeometry(1.8, 8, 6);
@@ -603,6 +614,132 @@ export class SceneSetup {
     this.scene.add(this.aircraftGroup);
   }
 
+  setLivery(bodyHex, accentHex) {
+    if (this.bodyMat) this.bodyMat.color.setHex(bodyHex);
+    if (this.accentMat) this.accentMat.color.setHex(accentHex);
+  }
+
+  spawnCrashExplosion(position, velocity) {
+    if (!this.scene) return;
+    if (this.aircraftGroup) this.aircraftGroup.visible = false;
+
+    // 1. Fiery Fireball Sphere
+    if (!this.explosionFireball) {
+      const geo = new THREE.SphereGeometry(1.5, 16, 16);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 1.0 });
+      this.explosionFireball = new THREE.Mesh(geo, mat);
+      this.scene.add(this.explosionFireball);
+    }
+    this.explosionFireball.position.copy(position);
+    this.explosionFireball.scale.set(1, 1, 1);
+    this.explosionFireball.material.opacity = 1.0;
+    this.explosionFireball.visible = true;
+
+    // 2. Explosion Point Light
+    if (!this.explosionLight) {
+      this.explosionLight = new THREE.PointLight(0xff5500, 35, 250);
+      this.scene.add(this.explosionLight);
+    }
+    this.explosionLight.position.copy(position);
+    this.explosionLight.intensity = 40;
+    this.explosionLight.visible = true;
+
+    // 3. Debris Chunks (Fuselage and Wing fragments)
+    this.clearCrashDebris();
+    const debrisCount = 12;
+    const debrisGeo = new THREE.BoxGeometry(1.4, 0.8, 2.0);
+    for (let i = 0; i < debrisCount; i++) {
+      const mat = new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0x333333 : 0xb00020, roughness: 0.5 });
+      const chunk = new THREE.Mesh(debrisGeo, mat);
+      chunk.position.copy(position).add(new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4));
+      chunk.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+      
+      const vx = (Math.random() - 0.5) * 60 + (velocity ? velocity.x * 0.4 : 0);
+      const vy = Math.random() * 45 + 20;
+      const vz = (Math.random() - 0.5) * 60 + (velocity ? velocity.z * 0.4 : 0);
+      
+      chunk.userData = { vx, vy, vz, rx: (Math.random()-0.5)*12, ry: (Math.random()-0.5)*12 };
+      this.scene.add(chunk);
+      this.debrisParticles.push(chunk);
+    }
+
+    // 4. Rising Smoke Plumes
+    const smokeGeo = new THREE.SphereGeometry(2.8, 8, 8);
+    for (let i = 0; i < 18; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.85 });
+      const smoke = new THREE.Mesh(smokeGeo, mat);
+      smoke.position.copy(position).add(new THREE.Vector3((Math.random()-0.5)*8, Math.random()*5, (Math.random()-0.5)*8));
+      const vx = (Math.random() - 0.5) * 12;
+      const vy = Math.random() * 25 + 12;
+      const vz = (Math.random() - 0.5) * 12;
+      smoke.userData = { vx, vy, vz, scaleRate: Math.random() * 3 + 2.5, life: 1.0 };
+      this.scene.add(smoke);
+      this.smokeParticles.push(smoke);
+    }
+  }
+
+  clearCrashDebris() {
+    this.debrisParticles.forEach(c => { this.scene.remove(c); c.geometry.dispose(); c.material.dispose(); });
+    this.debrisParticles = [];
+    this.smokeParticles.forEach(s => { this.scene.remove(s); s.geometry.dispose(); s.material.dispose(); });
+    this.smokeParticles = [];
+  }
+
+  resetAircraftVisuals() {
+    if (this.aircraftGroup) this.aircraftGroup.visible = true;
+    if (this.explosionFireball) this.explosionFireball.visible = false;
+    if (this.explosionLight) this.explosionLight.visible = false;
+    this.clearCrashDebris();
+  }
+
+  updateCrashEffects(dt) {
+    if (this.explosionFireball && this.explosionFireball.visible) {
+      this.explosionFireball.scale.addScalar(28 * dt);
+      this.explosionFireball.material.opacity -= 1.3 * dt;
+      if (this.explosionFireball.material.opacity <= 0) {
+        this.explosionFireball.visible = false;
+      }
+    }
+
+    if (this.explosionLight && this.explosionLight.visible) {
+      this.explosionLight.intensity = Math.max(0, this.explosionLight.intensity - 35 * dt);
+      if (this.explosionLight.intensity <= 0) this.explosionLight.visible = false;
+    }
+
+    this.debrisParticles.forEach(chunk => {
+      chunk.userData.vy -= 48 * dt; // gravity
+      chunk.position.x += chunk.userData.vx * dt;
+      chunk.position.y += chunk.userData.vy * dt;
+      chunk.position.z += chunk.userData.vz * dt;
+      chunk.rotation.x += chunk.userData.rx * dt;
+      chunk.rotation.y += chunk.userData.ry * dt;
+
+      const groundY = this.getTerrainHeightAt(chunk.position.x, chunk.position.z);
+      if (chunk.position.y <= groundY + 0.6) {
+        chunk.position.y = groundY + 0.6;
+        chunk.userData.vy = -chunk.userData.vy * 0.35;
+        chunk.userData.vx *= 0.8;
+        chunk.userData.vz *= 0.8;
+      }
+    });
+
+    for (let i = this.smokeParticles.length - 1; i >= 0; i--) {
+      const s = this.smokeParticles[i];
+      s.position.x += s.userData.vx * dt;
+      s.position.y += s.userData.vy * dt;
+      s.position.z += s.userData.vz * dt;
+      s.scale.addScalar(s.userData.scaleRate * dt);
+      s.userData.life -= 0.65 * dt;
+      s.material.opacity = Math.max(0, s.userData.life * 0.75);
+      if (s.userData.life <= 0) {
+        this.scene.remove(s);
+        s.geometry.dispose();
+        s.material.dispose();
+        this.smokeParticles.splice(i, 1);
+      }
+    }
+  }
+
   /**
    * Fast elevation query for flight physics and ground collision avoidance.
    * @param {number} x - World X coordinate
@@ -635,6 +772,27 @@ export class SceneSetup {
    * @param {FlightPhysics} physics - Current physics instance
    */
   update(dt, physics) {
+    // 0. Update Crash Effects if active
+    this.updateCrashEffects(dt);
+    if (physics.isCrashed) {
+      // Wreckage camera orbit with violent camera shake on initial impact
+      const crashCenter = physics.position.clone();
+      const timeSec = performance.now() * 0.001;
+      this.camWorldPos.set(
+        crashCenter.x + Math.cos(timeSec * 0.4) * 45,
+        crashCenter.y + 22 + Math.sin(timeSec * 8) * 1.5,
+        crashCenter.z + Math.sin(timeSec * 0.4) * 45
+      );
+      if (this.activeCameraMode === 'chase') {
+        this.chaseCamera.position.copy(this.camWorldPos);
+        this.chaseCamera.lookAt(crashCenter);
+      } else {
+        this.cockpitCamera.position.copy(this.camWorldPos);
+        this.cockpitCamera.lookAt(crashCenter);
+      }
+      return;
+    }
+
     // 1. Sync aircraft group transform to physics state
     this.aircraftGroup.position.copy(physics.position);
     this.aircraftGroup.quaternion.copy(physics.quaternion);

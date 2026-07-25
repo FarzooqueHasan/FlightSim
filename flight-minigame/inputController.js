@@ -1,19 +1,24 @@
 /**
- * InputController - Unified handler for Keyboard, Mouse, and HTML5 Gamepad inputs.
+ * InputController - Unified handler for Keyboard, Mouse Yoke, and HTML5 Gamepad inputs.
+ * Supports advanced aerospace controls: Gear, Flaps, Airbrake, and Mouse Aim Flight Yoke.
  */
 export class InputController {
   constructor() {
     this.keys = {};
     this.mouseState = { x: 0, y: 0, isDown: false };
-    this.useMouseControl = false;
+    this.useMouseControl = true; // Default to Mouse Aim for silky smooth AAA control
     
     // One-shot triggers
     this.cameraToggleRequested = false;
     this.exitRequested = false;
+    this.gearToggleRequested = false;
+    this.flapsToggleRequested = false;
 
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onMouseMove = this.onMouseMove.bind(this);
+    this.onMouseDown = this.onMouseDown.bind(this);
+    this.onMouseUp = this.onMouseUp.bind(this);
     this.onWheel = this.onWheel.bind(this);
 
     this.attachListeners();
@@ -23,6 +28,8 @@ export class InputController {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('mousemove', this.onMouseMove);
+    window.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
     window.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
@@ -30,6 +37,8 @@ export class InputController {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('mousemove', this.onMouseMove);
+    window.removeEventListener('mousedown', this.onMouseDown);
+    window.removeEventListener('mouseup', this.onMouseUp);
     window.removeEventListener('wheel', this.onWheel);
     this.keys = {};
   }
@@ -45,6 +54,15 @@ export class InputController {
     if (e.code === 'Escape') {
       this.exitRequested = true;
     }
+    if (e.code === 'KeyG' || e.key.toLowerCase() === 'g') {
+      this.gearToggleRequested = true;
+    }
+    if (e.code === 'KeyF' || e.key.toLowerCase() === 'f') {
+      this.flapsToggleRequested = true;
+    }
+    if (e.code === 'KeyM' || e.key.toLowerCase() === 'm') {
+      this.useMouseControl = !this.useMouseControl;
+    }
   }
 
   onKeyUp(e) {
@@ -57,12 +75,24 @@ export class InputController {
     // Normalize mouse position from center of screen (-1 to +1)
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
-    this.mouseState.x = Math.max(-1, Math.min(1, (e.clientX - centerX) / (centerX * 0.8)));
-    this.mouseState.y = Math.max(-1, Math.min(1, (e.clientY - centerY) / (centerY * 0.8)));
+    this.mouseState.x = Math.max(-1, Math.min(1, (e.clientX - centerX) / (centerX * 0.75)));
+    this.mouseState.y = Math.max(-1, Math.min(1, (e.clientY - centerY) / (centerY * 0.75)));
+  }
+
+  onMouseDown(e) {
+    if (e.button === 0) {
+      this.mouseState.isDown = true;
+    }
+  }
+
+  onMouseUp(e) {
+    if (e.button === 0) {
+      this.mouseState.isDown = false;
+    }
   }
 
   onWheel(e) {
-    // Optional wheel throttle adjust if needed
+    // Wheel controls throttle in Mouse Yoke mode
     if (this.useMouseControl) {
       e.preventDefault();
     }
@@ -70,7 +100,7 @@ export class InputController {
 
   /**
    * Samples current unified input state for the current frame.
-   * @returns {object} { pitch, roll, yaw, throttleDelta, boost, cameraToggle, exit }
+   * @returns {object} { pitch, roll, yaw, throttleDelta, boost, cameraToggle, exit, gearToggle, flapsToggle, airbrake, useMouseControl, mouseX, mouseY }
    */
   sampleInput() {
     let pitch = 0;
@@ -78,6 +108,7 @@ export class InputController {
     let yaw = 0;
     let throttleDelta = 0;
     let boost = false;
+    let airbrake = false;
 
     // --- KEYBOARD INPUTS ---
     // Pitch: W or ArrowDown (nose down / dive = -1), S or ArrowUp (nose up / climb = +1)
@@ -96,13 +127,18 @@ export class InputController {
     if (this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.keys['Shift']) throttleDelta += 1.0;
     if (this.keys['ControlLeft'] || this.keys['ControlRight'] || this.keys['Control']) throttleDelta -= 1.0;
 
-    // Boost: Space
-    if (this.keys['Space']) boost = true;
+    // Boost: Space or Mouse Click
+    if (this.keys['Space'] || (this.useMouseControl && this.mouseState.isDown)) boost = true;
 
-    // --- MOUSE FLIGHT-STICK MODE OPTION ---
+    // Airbrake: B
+    if (this.keys['KeyB'] || this.keys['b']) airbrake = true;
+
+    // --- MOUSE FLIGHT YOKE AIM MODE ---
     if (this.useMouseControl) {
-      roll += this.mouseState.x;
-      pitch -= this.mouseState.y; // Mouse up = climb
+      // Smoothly map mouse offset to roll and pitch
+      roll += this.mouseState.x * 1.25;
+      pitch -= this.mouseState.y * 1.25; // Screen up (negative Y) = climb (+pitch)
+      yaw += this.mouseState.x * 0.45; // Auto-rudder coordination
     }
 
     // --- GAMEPAD INPUTS (HTML5 API Polling) ---
@@ -126,12 +162,24 @@ export class InputController {
         // Boost (South button / A / Cross)
         if (gp.buttons[0] && gp.buttons[0].pressed) boost = true;
 
+        // Airbrake (East button / B / Circle)
+        if (gp.buttons[1] && gp.buttons[1].pressed) airbrake = true;
+
         // Camera toggle (North button / Y / Triangle)
         if (gp.buttons[3] && gp.buttons[3].pressed) {
           if (!this._gpCamDebounce) {
             this.cameraToggleRequested = true;
             this._gpCamDebounce = true;
             setTimeout(() => { this._gpCamDebounce = false; }, 400);
+          }
+        }
+
+        // Landing gear toggle (D-Pad Down or Button 13)
+        if (gp.buttons[13] && gp.buttons[13].pressed) {
+          if (!this._gpGearDebounce) {
+            this.gearToggleRequested = true;
+            this._gpGearDebounce = true;
+            setTimeout(() => { this._gpGearDebounce = false; }, 400);
           }
         }
         break;
@@ -146,10 +194,14 @@ export class InputController {
 
     const cameraToggle = this.cameraToggleRequested;
     const exit = this.exitRequested;
+    const gearToggle = this.gearToggleRequested;
+    const flapsToggle = this.flapsToggleRequested;
     
     // Reset one-shot flags
     this.cameraToggleRequested = false;
     this.exitRequested = false;
+    this.gearToggleRequested = false;
+    this.flapsToggleRequested = false;
 
     return {
       pitch,
@@ -157,8 +209,14 @@ export class InputController {
       yaw,
       throttleDelta,
       boost,
+      airbrake,
       cameraToggle,
-      exit
+      exit,
+      gearToggle,
+      flapsToggle,
+      useMouseControl: this.useMouseControl,
+      mouseX: this.mouseState.x,
+      mouseY: this.mouseState.y
     };
   }
 }

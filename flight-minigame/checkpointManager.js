@@ -42,10 +42,14 @@ export class CheckpointManager {
     this.combo = 1;
     this.comboTimer = 0;
     this.obstacleSpawnTimer = 0;
+    this._runwayLanded = false;
 
     if (this.mode === 'checkpoint_race') {
-      this.totalCheckpoints = 8;
+      this.totalCheckpoints = 10;
       this.spawnRaceCourse();
+    } else if (this.mode === 'runway_takeoff') {
+      this.totalCheckpoints = 6;
+      this.spawnRunwayCourse();
     } else if (this.mode === 'free_flight') {
       this.totalCheckpoints = 0; // Infinite exploration practice rings
       this.spawnFreeFlightRings();
@@ -76,16 +80,18 @@ export class CheckpointManager {
   }
 
   spawnRaceCourse() {
-    // 8 coordinate waypoints creating an exciting loop through hills and over water
+    // 10 coordinate waypoints creating a high-speed mountain canyon & coastal loop
     const waypoints = [
-      { pos: new THREE.Vector3(0, 150, -350), rotY: 0 },
-      { pos: new THREE.Vector3(200, 180, -750), rotY: -0.5 },
-      { pos: new THREE.Vector3(650, 220, -1100), rotY: -1.2 },
-      { pos: new THREE.Vector3(1100, 160, -900), rotY: -2.3 },
-      { pos: new THREE.Vector3(1200, 110, -300), rotY: -3.1 },
-      { pos: new THREE.Vector3(800, 140, 250), rotY: -4.0 },
-      { pos: new THREE.Vector3(250, 190, 450), rotY: -4.8 },
-      { pos: new THREE.Vector3(-200, 160, 100), rotY: -5.8 }
+      { pos: new THREE.Vector3(0, 140, -350), rotY: 0 },
+      { pos: new THREE.Vector3(220, 160, -750), rotY: -0.5 },
+      { pos: new THREE.Vector3(650, 190, -1150), rotY: -1.2 },
+      { pos: new THREE.Vector3(1200, 140, -1000), rotY: -2.3 },
+      { pos: new THREE.Vector3(1400, 95, -400), rotY: -3.0 },
+      { pos: new THREE.Vector3(1100, 120, 200), rotY: -3.8 },
+      { pos: new THREE.Vector3(600, 170, 600), rotY: -4.5 },
+      { pos: new THREE.Vector3(100, 210, 800), rotY: -5.2 },
+      { pos: new THREE.Vector3(-350, 150, 450), rotY: -5.8 },
+      { pos: new THREE.Vector3(-250, 130, -50), rotY: -6.2 }
     ];
 
     const torusGeo = new THREE.TorusGeometry(40, 3.8, 12, 32);
@@ -109,9 +115,39 @@ export class CheckpointManager {
     });
   }
 
+  spawnRunwayCourse() {
+    // 6 traffic pattern waypoints for runway takeoff, circuit, and precision landing
+    const waypoints = [
+      { pos: new THREE.Vector3(0, 45, 100), rotY: 0, label: "Takeoff Climb Out" },
+      { pos: new THREE.Vector3(0, 120, -500), rotY: 0, label: "Upwind Leg" },
+      { pos: new THREE.Vector3(-450, 150, -600), rotY: -Math.PI/2, label: "Crosswind Turn" },
+      { pos: new THREE.Vector3(-550, 150, 100), rotY: -Math.PI, label: "Downwind Leg" },
+      { pos: new THREE.Vector3(-350, 120, 750), rotY: -Math.PI*1.5, label: "Base Turn" },
+      { pos: new THREE.Vector3(0, 35, 900), rotY: 0, label: "Final Runway Approach" }
+    ];
+
+    const torusGeo = new THREE.TorusGeometry(36, 3.6, 12, 32);
+
+    waypoints.forEach((wp, idx) => {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x3d64ff,
+        emissive: 0x3d64ff,
+        emissiveIntensity: 0.5,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const ring = new THREE.Mesh(torusGeo, mat);
+      ring.position.copy(wp.pos);
+      ring.rotation.y = wp.rotY;
+      ring.userData = { index: idx, collected: false, label: wp.label };
+      this.ringGroup.add(ring);
+      this.rings.push(ring);
+    });
+  }
+
   spawnFreeFlightRings() {
     const torusGeo = new THREE.TorusGeometry(45, 4.0, 12, 32);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       const mat = new THREE.MeshStandardMaterial({
         color: 0x00f0ff,
         emissive: 0x00f0ff,
@@ -120,7 +156,7 @@ export class CheckpointManager {
       const ring = new THREE.Mesh(torusGeo, mat);
       ring.position.set(
         (Math.random() - 0.5) * 2000,
-        120 + Math.random() * 200,
+        100 + Math.random() * 250,
         (Math.random() - 0.5) * 2000
       );
       ring.rotation.y = Math.random() * Math.PI * 2;
@@ -131,7 +167,6 @@ export class CheckpointManager {
   }
 
   spawnInitialObstacles() {
-    // Spawn 15 rock spires and floating cyber towers
     for (let i = 0; i < 15; i++) {
       this.spawnSingleObstacle(new THREE.Vector3(
         (Math.random() - 0.5) * 1200,
@@ -156,7 +191,7 @@ export class CheckpointManager {
 
     const obs = new THREE.Mesh(geo, mat);
     obs.position.copy(pos);
-    if (!isTower) obs.position.y = 90; // Grounded spire
+    if (!isTower) obs.position.y = 90;
     
     this.obstacleGroup.add(obs);
     this.obstacles.push(obs);
@@ -173,12 +208,12 @@ export class CheckpointManager {
     if (this.combo > 1) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) {
-        this.combo = 1; // Combo streak reset
+        this.combo = 1;
       }
     }
 
     // 2. Animate target ring pulsing
-    if (this.mode === 'checkpoint_race' && this.currentIndex < this.rings.length) {
+    if ((this.mode === 'checkpoint_race' || this.mode === 'runway_takeoff') && this.currentIndex < this.rings.length) {
       const activeRing = this.rings[this.currentIndex];
       if (activeRing && !activeRing.userData.collected) {
         const pulse = 1.0 + Math.sin(Date.now() * 0.006) * 0.12;
@@ -187,14 +222,26 @@ export class CheckpointManager {
     }
 
     // 3. Checkpoint Ring Collision Detection
-    if (this.mode === 'checkpoint_race') {
+    if (this.mode === 'checkpoint_race' || this.mode === 'runway_takeoff') {
       if (this.currentIndex < this.rings.length) {
         const targetRing = this.rings[this.currentIndex];
         const dist = physics.position.distanceTo(targetRing.position);
         
-        // Bounding sphere collision check (ring radius is 40)
         if (dist < 46 && !targetRing.userData.collected) {
           return this.collectCheckpoint(targetRing);
+        }
+      } else if (this.mode === 'runway_takeoff' && !this._runwayLanded) {
+        // All rings collected in runway trial, verify runway touchdown
+        if (physics.position.y <= 6.5 && Math.abs(physics.position.x) <= 60 && physics.position.z >= -1400 && physics.position.z <= 800 && physics.speed < 75) {
+          this._runwayLanded = true;
+          audioSynth.playMissionComplete();
+          return {
+            type: 'COURSE_COMPLETE',
+            checkpointsHit: this.checkpointsHit,
+            totalCheckpoints: this.totalCheckpoints,
+            score: this.score + 1000,
+            combo: this.combo
+          };
         }
       }
     } else if (this.mode === 'free_flight') {
@@ -217,14 +264,11 @@ export class CheckpointManager {
     this.checkpointsHit++;
     this.score += 150 * this.combo;
     
-    // Increment combo
     this.combo = Math.min(10, this.combo + 1);
-    this.comboTimer = 6.0; // 6 seconds to reach next ring
+    this.comboTimer = 6.0;
 
-    // Play chime
     audioSynth.playCheckpointChime(this.combo);
 
-    // Turn ring green and fade out
     ring.material.color.setHex(0x00ff88);
     ring.material.emissive.setHex(0x00ff88);
     ring.material.emissiveIntensity = 3.0;
@@ -233,7 +277,7 @@ export class CheckpointManager {
     this.currentIndex++;
     this.updateRingVisuals();
 
-    const isComplete = this.currentIndex >= this.totalCheckpoints;
+    const isComplete = this.currentIndex >= this.totalCheckpoints && this.mode !== 'runway_takeoff';
     if (isComplete) {
       audioSynth.playMissionComplete();
     }

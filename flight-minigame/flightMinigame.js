@@ -70,10 +70,14 @@ export class FlightMinigame {
   start() {
     if (this.isRunning) this.stopLoop();
 
-    this.physics.reset(new THREE.Vector3(0, 150, 0), 0);
+    const startOnRunway = this.mode === 'runway_takeoff';
+    const startPos = startOnRunway ? new THREE.Vector3(0, 4.4, 750) : new THREE.Vector3(0, 150, 0);
+    this.physics.reset(startPos, 0, startOnRunway);
+    this.sceneSetup.resetAircraftVisuals();
     this.checkpointMgr.reset();
     this.input.attachListeners();
 
+    this._crashTriggered = false;
     this.isRunning = true;
     this.startTime = performance.now();
     this.lastTime = this.startTime;
@@ -121,6 +125,31 @@ export class FlightMinigame {
     // 2. Update Flight Physics
     this.physics.update(dt, inputState, this.sceneSetup);
 
+    // Check for Crash Event
+    if (this.physics.isCrashed && !this._crashTriggered) {
+      this._crashTriggered = true;
+      console.log(`[FlightMinigame] Aircraft crashed: ${this.physics.crashReason}`);
+      audioSynth.playStinger(150, 0.8, 'sawtooth');
+      this.sceneSetup.spawnCrashExplosion(this.physics.position, this.physics.velocity);
+      
+      setTimeout(() => {
+        if (!this.isRunning) return;
+        this.stopLoop();
+        this.hud.showCrashModal({
+          reason: this.physics.crashReason,
+          speed: Math.round(this.physics.speed),
+          maxG: this.physics.gForce.toFixed(1),
+          timeSec: (this.elapsedMs / 1000).toFixed(1)
+        }, () => {
+          this._crashTriggered = false;
+          this.start();
+        }, () => {
+          this._crashTriggered = false;
+          this.handleManualExit();
+        });
+      }, 1600);
+    }
+
     // 3. Update Checkpoint / Obstacle collisions
     const event = this.checkpointMgr.update(dt, this.physics);
     if (event && event.type === 'COURSE_COMPLETE') {
@@ -135,7 +164,7 @@ export class FlightMinigame {
     this.sceneSetup.update(dt, this.physics);
 
     // 6. Update HUD Overlay
-    this.hud.update(dt, this.physics, this.checkpointMgr, this.elapsedMs);
+    this.hud.update(dt, this.physics, this.checkpointMgr, this.elapsedMs, inputState);
 
     // Continue loop
     this.animFrameId = requestAnimationFrame(this.loop);
