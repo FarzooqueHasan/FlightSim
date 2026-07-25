@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AeroNexus — Arcade Flight Simulator & Hangar Hub</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- MAIN GAME HUB ("HANGAR DASHBOARD") -->
+    <div id="main-game-hub" class="hub-container">
+      <!-- Hub Header -->
+      <header class="hub-header">
+        <div class="logo-area">
+          <div class="logo-icon">▲</div>
+          <div class="logo-text">
+            <h1>AERONEXUS <span>V1.0</span></h1>
+            <p class="subtitle">ORBITAL DEFENSE & TRAINING COMMAND</p>
+          </div>
+        </div>
+        <div class="player-stats">
+          <div class="stat-badge rank-badge">
+            <span class="stat-label">PILOT RANK</span>
+            <span class="stat-value text-gradient">ACE III</span>
+          </div>
+          <div class="stat-badge credits-badge" id="credits-badge">
+            <span class="stat-label">AVAILABLE CREDITS</span>
+            <span class="stat-value neon-cyan" id="player-credits">2,450 CR</span>
+          </div>
+          <div class="stat-badge trophies-badge">
+            <span class="stat-label">TROPHIES</span>
+            <span class="stat-value neon-gold" id="player-trophies">12 / 15</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Hub Content Grid -->
+      <main class="hub-content">
+        <!-- Left Column: Activity Selector -->
+        <section class="activity-section">
+          <div class="section-header">
+            <h2>TACTICAL MISSIONS & SIMULATIONS</h2>
+            <span class="status-indicator online">SYSTEMS ONLINE</span>
+          </div>
+          <div class="mission-grid">
+            <!-- Mission Card 1 (Demo) -->
+            <div class="mission-card completed">
+              <div class="card-status">COMPLETED</div>
+              <div class="card-icon">🛰️</div>
+              <h3>Orbital Relay Patrol</h3>
+              <p>Standard recon sector 4. Automated drone defenses cleared.</p>
+              <div class="card-footer">
+                <span class="reward-tag">+500 CR</span>
+                <button class="btn btn-secondary" disabled>ARCHIVED</button>
+              </div>
+            </div>
+
+            <!-- Mission Card 2: FLIGHT SIMULATOR MINIGAME (Featured) -->
+            <div class="mission-card featured active-sim-card">
+              <div class="card-glow"></div>
+              <div class="card-status status-bonus">⭐ BONUS ACTIVITY ⭐</div>
+              <div class="card-icon pulse-icon">🚀</div>
+              <h3>HYPER-TUNNEL FLIGHT SIMULATOR</h3>
+              <p>Self-contained VR flight simulator. Test your high-speed reflexes in custom obstacle courses and checkpoint races to earn real rewards!</p>
+              
+              <div class="mode-selector">
+                <label for="sim-mode-select">SELECT SIMULATION MODE:</label>
+                <select id="sim-mode-select" class="mode-dropdown">
+                  <option value="checkpoint_race">🏁 Checkpoint Race (Timed Course)</option>
+                  <option value="free_flight">🕊️ Free Flight (Practice & Explore)</option>
+                  <option value="obstacle_survival">⚡ Obstacle Survival (High-Speed Gauntlet)</option>
+                </select>
+              </div>
+
+              <div class="card-footer">
+                <span class="reward-tag neon-gold">UP TO 2,500 CR REWARD</span>
+                <button id="btn-launch-sim" class="btn btn-primary btn-glow">LAUNCH SIMULATOR ➔</button>
+              </div>
+            </div>
+
+            <!-- Mission Card 3 (Demo) -->
+            <div class="mission-card locked">
+              <div class="card-status">LOCKED (REQUIRES RANK IV)</div>
+              <div class="card-icon">☄️</div>
+              <h3>Asteroid Field Intercept</h3>
+              <p>Deep space combat trial against heavy rogue AI fighters.</p>
+              <div class="card-footer">
+                <span class="reward-tag">+3,000 CR</span>
+                <button class="btn btn-secondary" disabled>LOCKED</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Column: Leaderboard & Recent Runs -->
+        <aside class="hub-sidebar">
+          <div class="sidebar-panel glass-panel">
+            <h3>🏆 SIMULATOR LEADERBOARD</h3>
+            <p class="panel-sub">TOP RECORDED RUNS — HYPER-TUNNEL</p>
+            <div class="leaderboard-list" id="leaderboard-list">
+              <div class="lb-item top-1">
+                <span class="lb-rank">1</span>
+                <span class="lb-name">CDR. VANTAGE (YOU)</span>
+                <span class="lb-score neon-cyan">3,420 PTS</span>
+              </div>
+              <div class="lb-item top-2">
+                <span class="lb-rank">2</span>
+                <span class="lb-name">LT. KRAKEN</span>
+                <span class="lb-score">2,890 PTS</span>
+              </div>
+              <div class="lb-item top-3">
+                <span class="lb-rank">3</span>
+                <span class="lb-name">ENSIGN ROOK</span>
+                <span class="lb-score">2,150 PTS</span>
+              </div>
+              <div class="lb-item">
+                <span class="lb-rank">4</span>
+                <span class="lb-name">AI BOT "ICEMAN"</span>
+                <span class="lb-score">1,800 PTS</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-panel glass-panel recent-runs-panel">
+            <h3>📡 RECENT TELEMETRY</h3>
+            <div id="recent-runs-list" class="recent-list">
+              <p class="empty-state">No recent simulations recorded today.</p>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <!-- FLIGHT MINIGAME OVERLAY (Hidden by default) -->
+    <div id="minigame-overlay" class="minigame-overlay hidden">
+      <!-- 3D Three.js Viewport Canvas Container -->
+      <div id="minigame-viewport" class="minigame-viewport"></div>
+
+      <!-- GLASSMORPHISM HUD OVERLAY -->
+      <div id="minigame-hud" class="minigame-hud">
+        <!-- Top Bar: Compass & Status -->
+        <div class="hud-top-bar">
+          <div class="hud-compass-box glass-box">
+            <div class="compass-marker">▼</div>
+            <div id="hud-compass-strip" class="compass-strip">
+              <span>N</span><span>030</span><span>060</span><span>E</span><span>120</span><span>150</span><span>S</span><span>210</span><span>240</span><span>W</span><span>300</span><span>330</span><span>N</span>
+            </div>
+          </div>
+          <div class="hud-mode-badge glass-box" id="hud-mode-display">
+            CHECKPOINT RACE
+          </div>
+          <button id="btn-exit-sim" class="btn-abort glass-box" title="Exit Simulation (ESC)">
+            ✕ ABORT [ESC]
+          </button>
+        </div>
+
+        <!-- Left Gauge: Speed & Throttle -->
+        <div class="hud-left-panel">
+          <div class="gauge-box glass-box">
+            <div class="gauge-header">AIRSPEED</div>
+            <div class="gauge-value neon-cyan" id="hud-speed-val">0</div>
+            <div class="gauge-unit">KTS</div>
+            <div class="bar-meter vertical-meter">
+              <div class="bar-fill cyan-fill" id="hud-speed-bar" style="height: 0%"></div>
+            </div>
+          </div>
+          <div class="gauge-box glass-box mini-gauge">
+            <div class="gauge-header">THROTTLE</div>
+            <div class="gauge-value" id="hud-throttle-val">0%</div>
+            <div class="bar-meter horizontal-meter">
+              <div class="bar-fill cyan-fill" id="hud-throttle-bar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Gauge: Altitude & Boost -->
+        <div class="hud-right-panel">
+          <div class="gauge-box glass-box">
+            <div class="gauge-header">ALTITUDE</div>
+            <div class="gauge-value neon-gold" id="hud-alt-val">0</div>
+            <div class="gauge-unit">ALT MTR</div>
+            <div class="bar-meter vertical-meter">
+              <div class="bar-fill gold-fill" id="hud-alt-bar" style="height: 0%"></div>
+            </div>
+          </div>
+          <div class="gauge-box glass-box mini-gauge boost-gauge">
+            <div class="gauge-header">BOOST [SPACE]</div>
+            <div class="gauge-value neon-magenta" id="hud-boost-val">READY</div>
+            <div class="bar-meter horizontal-meter">
+              <div class="bar-fill magenta-fill" id="hud-boost-bar" style="width: 100%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Bottom: Checkpoints, Time, Score & Minimap -->
+        <div class="hud-bottom-bar">
+          <div class="stat-group glass-box">
+            <div class="hud-label">CHECKPOINTS</div>
+            <div class="hud-val neon-cyan" id="hud-checkpoints">0 / 8</div>
+          </div>
+
+          <div class="stat-group glass-box">
+            <div class="hud-label">TIMER</div>
+            <div class="hud-val timer-val" id="hud-timer">00:00.0</div>
+          </div>
+
+          <div class="stat-group glass-box">
+            <div class="hud-label">SCORE / COMBO</div>
+            <div class="hud-val neon-gold" id="hud-score">0 <span class="combo-tag" id="hud-combo">x1</span></div>
+          </div>
+
+          <!-- 2D Radar / Minimap -->
+          <div class="minimap-box glass-box" id="minimap-container">
+            <div class="minimap-label">RADAR</div>
+            <canvas id="minimap-canvas" width="140" height="140"></canvas>
+          </div>
+        </div>
+
+        <!-- Center Center: Crosshair & Flight Vector -->
+        <div class="hud-center-crosshair">
+          <div class="crosshair-circle"></div>
+          <div class="crosshair-dot"></div>
+          <div class="pitch-ladder" id="hud-pitch-ladder"></div>
+          <div id="hud-warning-msg" class="warning-msg hidden">⚠️ STALL WARNING — INCREASE THROTTLE ⚠️</div>
+        </div>
+
+        <!-- Control Instructions Popup (Auto-dismisses) -->
+        <div id="hud-instructions" class="hud-instructions glass-panel">
+          <h3>🎮 FLIGHT CONTROLS</h3>
+          <div class="control-grid">
+            <div><kbd>W</kbd> / <kbd>S</kbd> — Pitch Down / Up</div>
+            <div><kbd>A</kbd> / <kbd>D</kbd> — Roll Left / Right</div>
+            <div><kbd>Q</kbd> / <kbd>E</kbd> — Yaw Left / Right</div>
+            <div><kbd>SHIFT</kbd> / <kbd>CTRL</kbd> — Throttle Up / Down</div>
+            <div><kbd>SPACE</kbd> — Hyper-Boost (Regenerating)</div>
+            <div><kbd>C</kbd> — Toggle Camera (Chase / Cockpit)</div>
+            <div><kbd>ESC</kbd> — Abort / Exit Simulation</div>
+          </div>
+          <p class="instruction-hint">Fly through glowing rings in sequence! Keep speed above 60 KTS to prevent stall drift.</p>
+        </div>
+
+        <!-- Run Completion / Results Modal -->
+        <div id="minigame-results-modal" class="results-modal hidden">
+          <div class="results-card glass-panel">
+            <h2 id="results-title">MISSION COMPLETED!</h2>
+            <div class="results-stats">
+              <div class="res-row"><span>MODE:</span> <strong id="res-mode">Checkpoint Race</strong></div>
+              <div class="res-row"><span>TIME ELAPSED:</span> <strong id="res-time" class="neon-cyan">47.23s</strong></div>
+              <div class="res-row"><span>CHECKPOINTS HIT:</span> <strong id="res-checkpoints">8 / 8</strong></div>
+              <div class="res-row"><span>FINAL SCORE:</span> <strong id="res-score" class="neon-gold">1,420 PTS</strong></div>
+              <div class="res-row reward-row"><span>REWARD EARNED:</span> <strong id="res-reward" class="neon-green">+1,420 CR</strong></div>
+            </div>
+            <div class="results-actions">
+              <button id="btn-results-return" class="btn btn-primary btn-glow">COLLECT REWARD & RETURN TO HANGAR ➔</button>
+              <button id="btn-results-retry" class="btn btn-secondary">RETRY SIMULATION 🔄</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Celebration Popup in Hangar Hub -->
+    <div id="reward-notification" class="reward-toast hidden">
+      <div class="toast-icon">🎁</div>
+      <div class="toast-content">
+        <h4>MISSION REWARD RECEIVED!</h4>
+        <p id="toast-text">+1,420 CR added to command account.</p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
