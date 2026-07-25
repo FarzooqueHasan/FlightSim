@@ -82,6 +82,13 @@ export class FlightPhysics {
     this.isStalling = false;
     this.isOnGround = startOnRunway;
 
+    // Landing state
+    this.isLanded = startOnRunway; // Remains true while aircraft is on ground after touchdown
+    this.landingState = null;       // null | 'ok' | 'rough' — result of most recent touchdown
+    this.touchdownVerticalSpeed = 0; // Vertical sink rate at moment of touchdown (m/s)
+    this.touchdownAirspeed = 0;      // Airspeed at moment of touchdown
+    this._wasAirborne = !startOnRunway; // Tracks last frame air-status for touchdown edge detection
+
     // Crash State
     this.isCrashed = false;
     this.crashReason = null;
@@ -183,22 +190,67 @@ export class FlightPhysics {
       
       if (Math.abs(this.position.x) <= 60 && this.position.z >= -1400 && this.position.z <= 800) {
         isOnRunwayTarmac = true;
+        minAltitude = Math.max(2.8, terrainHeight + 2.8); // Runway is perfectly flat
       }
     }
+
+    const wasAirborne = this._wasAirborne;
     this.isOnGround = this.position.y <= minAltitude + 0.6;
+    this._wasAirborne = !this.isOnGround;
 
     // Ground & Runway Contact Handling
     if (this.position.y <= minAltitude) {
+      // Calculate vertical impact speed (positive = descending into ground)
       const verticalImpactSpeed = (prevY - this.position.y) / Math.max(0.001, dt);
-      
-      // Crash Detection: High speed impact without gear, or steep vertical smash into terrain
-      if (verticalImpactSpeed > 20 || (!this.gearDown && this.speed > 80 && !isOnRunwayTarmac)) {
-        this.isCrashed = true;
-        this.crashReason = isOnRunwayTarmac ? "HIGH SPEED BELLY LANDING IMPACT" : "TERRAIN / MOUNTAIN COLLISION";
-        return;
+
+      // -----------------------------------------------------------------------
+      // LANDING DETECTION: Only trigger on the frame we first touch down (edge)
+      // -----------------------------------------------------------------------
+      if (wasAirborne) {
+        const bankAngleDeg = Math.abs(this.euler.z * (180 / Math.PI));
+        const gearOk = this.gearDown;
+        const descentOk = verticalImpactSpeed <= 14; // ≤14 m/s descent rate = safe
+        const bankOk = bankAngleDeg <= 8;            // ≤8° bank = wings-level
+        const speedOk = this.speed < 130;             // Under 130 kts at contact
+
+        this.touchdownVerticalSpeed = verticalImpactSpeed;
+        this.touchdownAirspeed = this.speed;
+
+        if (!gearOk && this.speed > 60) {
+          // Gear-up belly landing at speed — always a crash
+          this.isCrashed = true;
+          this.crashReason = isOnRunwayTarmac
+            ? 'GEAR UP BELLY LANDING — RUNWAY CONTACT'
+            : 'GEAR UP — TERRAIN CONTACT';
+          return;
+        } else if (verticalImpactSpeed > 22) {
+          // Catastrophic sink rate — structural failure
+          this.isCrashed = true;
+          this.crashReason = isOnRunwayTarmac
+            ? 'HARD LANDING — STRUCTURAL FAILURE'
+            : 'HIGH-SPEED TERRAIN IMPACT';
+          return;
+        } else if (!isOnRunwayTarmac && verticalImpactSpeed > 12) {
+          // Off-runway: any significant impact in rough terrain = crash
+          this.isCrashed = true;
+          this.crashReason = 'TERRAIN / OFF-RUNWAY COLLISION';
+          return;
+        } else if (verticalImpactSpeed > 14 && verticalImpactSpeed <= 22) {
+          // Survivable rough landing (high sink rate but not catastrophic)
+          this.landingState = 'rough';
+          this.isLanded = true;
+        } else if (!bankOk) {
+          // Banked at >8° — dragging wingtip
+          this.landingState = 'rough';
+          this.isLanded = true;
+        } else {
+          // Textbook landing — all conditions met
+          this.landingState = 'ok';
+          this.isLanded = true;
+        }
       }
 
-      // Safe Touchdown / Ground Taxiing
+      // Clamp to ground
       this.position.y = minAltitude;
       if (this.velocity.y < 0) this.velocity.y = 0;
 
@@ -206,9 +258,18 @@ export class FlightPhysics {
       if (this.gearDown && isOnRunwayTarmac) {
         // Smooth runway taxi friction
         this.speed *= Math.pow(0.995, dt * 60);
+      } else if (this.gearDown) {
+        // Grass / off-runway roll-out
+        this.speed = Math.max(0, this.speed - 28 * dt);
       } else {
-        // Rough grass scrape / belly skid drag
-        this.speed = Math.max(0, this.speed - 40 * dt);
+        // Belly skid — heavy deceleration
+        this.speed = Math.max(0, this.speed - 55 * dt);
+      }
+    } else {
+      // Aircraft is airborne — clear landed state
+      if (!this.isOnGround) {
+        this.isLanded = false;
+        this.landingState = null;
       }
     }
   }

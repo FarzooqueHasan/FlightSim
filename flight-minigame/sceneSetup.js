@@ -18,6 +18,7 @@ export class SceneSetup {
     this.thrusterFlames = [];
     this.strobeLight = null;
     this.strobeTimer = 0;
+    this._lastFlameColorHex = -1; // Cache to skip redundant setHex calls
 
     this.terrainMesh = null;
     this.terrainHeights = null;
@@ -32,6 +33,14 @@ export class SceneSetup {
     // Smoothed camera tracking
     this.camWorldPos = new THREE.Vector3();
     this.camWorldLookAt = new THREE.Vector3();
+
+    // --- Pre-allocated temporaries (zero per-frame heap allocations!) ---
+    this._tmpOffset = new THREE.Vector3();
+    this._tmpTargetPos = new THREE.Vector3();
+    this._tmpLookAhead = new THREE.Vector3();
+    this._tmpCockpitOffset = new THREE.Vector3();
+    this._tmpCockpitLook = new THREE.Vector3();
+    this._tmpCrashCenter = new THREE.Vector3();
 
     // Livery Materials & Crash Effects
     this.bodyMat = null;
@@ -97,8 +106,8 @@ export class SceneSetup {
     const sunLight = new THREE.DirectionalLight(0xfffaed, 2.4);
     sunLight.position.set(1200, 1800, -1000);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.mapSize.width = 1024;  // 1024 is plenty for arcade quality at 2x the GPU cost of 512
+    sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.camera.near = 100;
     sunLight.shadow.camera.far = 4000;
     const d = 1500;
@@ -233,19 +242,20 @@ export class SceneSetup {
 
   createOceanWater() {
     // Large shimmering ocean plane surrounding the island at sea level (y = 0.5)
+    // NOTE: MeshPhysicalMaterial with transmission is extremely expensive (doubles render passes).
+    // Using MeshStandardMaterial with simple alpha transparency instead — visually similar, 2x faster.
     const waterGeo = new THREE.PlaneGeometry(8000, 8000);
     waterGeo.rotateX(-Math.PI / 2);
-    const waterMat = new THREE.MeshPhysicalMaterial({
+    const waterMat = new THREE.MeshStandardMaterial({
       color: 0x0b3d66,
-      roughness: 0.15,
-      metalness: 0.1,
-      transmission: 0.4,
-      opacity: 0.88,
+      roughness: 0.2,
+      metalness: 0.15,
+      opacity: 0.82,
       transparent: true
     });
     const water = new THREE.Mesh(waterGeo, waterMat);
     water.position.y = 0.5;
-    water.receiveShadow = true;
+    water.receiveShadow = false; // Ocean doesn't need shadow reception
     this.scene.add(water);
   }
 
@@ -811,20 +821,20 @@ export class SceneSetup {
     // 0. Update Crash Effects if active
     this.updateCrashEffects(dt);
     if (physics.isCrashed) {
-      // Wreckage camera orbit with violent camera shake on initial impact
-      const crashCenter = physics.position.clone();
+      // Wreckage camera orbit — reuse pre-allocated _tmpCrashCenter
+      this._tmpCrashCenter.copy(physics.position);
       const timeSec = performance.now() * 0.001;
       this.camWorldPos.set(
-        crashCenter.x + Math.cos(timeSec * 0.4) * 45,
-        crashCenter.y + 22 + Math.sin(timeSec * 8) * 1.5,
-        crashCenter.z + Math.sin(timeSec * 0.4) * 45
+        this._tmpCrashCenter.x + Math.cos(timeSec * 0.4) * 45,
+        this._tmpCrashCenter.y + 22 + Math.sin(timeSec * 8) * 1.5,
+        this._tmpCrashCenter.z + Math.sin(timeSec * 0.4) * 45
       );
       if (this.activeCameraMode === 'chase') {
         this.chaseCamera.position.copy(this.camWorldPos);
-        this.chaseCamera.lookAt(crashCenter);
+        this.chaseCamera.lookAt(this._tmpCrashCenter);
       } else {
         this.cockpitCamera.position.copy(this.camWorldPos);
-        this.cockpitCamera.lookAt(crashCenter);
+        this.cockpitCamera.lookAt(this._tmpCrashCenter);
       }
       return;
     }
@@ -833,14 +843,15 @@ export class SceneSetup {
     this.aircraftGroup.position.copy(physics.position);
     this.aircraftGroup.quaternion.copy(physics.quaternion);
 
-    // 2. Animate Thruster Flames
+    // 2. Animate Thruster Flames (use pre-allocated flicker; only update color when it changes)
     const boostScale = physics.isBoosting ? 2.4 : 1.0 + (physics.throttle * 0.5);
     const flameColorHex = physics.isBoosting ? 0xff007b : 0x00f0ff;
-    
-    this.thrusterFlames.forEach(flame => {
-      flame.scale.set(1, 1, boostScale * (0.9 + Math.random() * 0.2));
-      flame.material.color.setHex(flameColorHex);
-    });
+    const flameZ = boostScale * (0.9 + Math.random() * 0.2);
+    if (flameColorHex !== this._lastFlameColorHex) {
+      this.thrusterFlames.forEach(flame => flame.material.color.setHex(flameColorHex));
+      this._lastFlameColorHex = flameColorHex;
+    }
+    this.thrusterFlames.forEach(flame => flame.scale.z = flameZ);
 
     // 3. Animate Strobe Light & Beacons
     this.strobeTimer += dt;
@@ -856,35 +867,36 @@ export class SceneSetup {
       dish.rotation.y += dt * 1.5;
     });
 
-    // 5. Update Active Camera Rig
+    // 5. Update Active Camera Rig (all Vector3 ops use pre-allocated temporaries — zero allocations!)
     if (this.activeCameraMode === 'chase') {
-      const localOffset = new THREE.Vector3(0, 7.5, 26);
-      const targetPos = physics.position.clone().add(localOffset.clone().applyQuaternion(physics.quaternion));
-      
+      // Compute target camera position: aircraft + local offset rotated by aircraft quaternion
+      this._tmpOffset.set(0, 7.5, 26).applyQuaternion(physics.quaternion);
+      this._tmpTargetPos.copy(physics.position).add(this._tmpOffset);
+
       // Ensure camera stays above terrain ground floor
-      const camTerrainY = this.getTerrainHeightAt(targetPos.x, targetPos.z);
-      if (targetPos.y < camTerrainY + 4) {
-        targetPos.y = camTerrainY + 4;
+      const camTerrainY = this.getTerrainHeightAt(this._tmpTargetPos.x, this._tmpTargetPos.z);
+      if (this._tmpTargetPos.y < camTerrainY + 4) {
+        this._tmpTargetPos.y = camTerrainY + 4;
       }
 
       const lerpSpeed = Math.min(1.0, 10.0 * dt);
-      this.camWorldPos.lerp(targetPos, lerpSpeed);
+      this.camWorldPos.lerp(this._tmpTargetPos, lerpSpeed);
       this.chaseCamera.position.copy(this.camWorldPos);
 
-      const lookAhead = physics.position.clone().addScaledVector(physics.forwardVector, 20);
-      this.camWorldLookAt.lerp(lookAhead, lerpSpeed);
+      this._tmpLookAhead.copy(physics.position).addScaledVector(physics.forwardVector, 20);
+      this.camWorldLookAt.lerp(this._tmpLookAhead, lerpSpeed);
       this.chaseCamera.lookAt(this.camWorldLookAt);
 
       const rollBank = Math.max(-0.4, Math.min(0.4, physics.euler.z * 0.35));
       this.chaseCamera.rotation.z += rollBank;
 
     } else if (this.activeCameraMode === 'cockpit') {
-      const cockpitOffset = new THREE.Vector3(0, 1.2, -0.5);
-      const camPos = physics.position.clone().add(cockpitOffset.applyQuaternion(physics.quaternion));
-      this.cockpitCamera.position.copy(camPos);
-      
-      const lookTarget = camPos.clone().addScaledVector(physics.forwardVector, 100);
-      this.cockpitCamera.lookAt(lookTarget);
+      this._tmpCockpitOffset.set(0, 1.2, -0.5).applyQuaternion(physics.quaternion);
+      this._tmpCockpitOffset.add(physics.position);
+      this.cockpitCamera.position.copy(this._tmpCockpitOffset);
+
+      this._tmpCockpitLook.copy(this._tmpCockpitOffset).addScaledVector(physics.forwardVector, 100);
+      this.cockpitCamera.lookAt(this._tmpCockpitLook);
       this.cockpitCamera.quaternion.copy(physics.quaternion);
     }
 

@@ -6,6 +6,8 @@ export class HUD {
   constructor() {
     this.initDOM();
     this.instructionTimer = 0;
+    // Cache of last-written values to avoid redundant DOM writes every frame
+    this._cache = {};
   }
 
   initDOM() {
@@ -62,12 +64,19 @@ export class HUD {
     this.crashTimeEl = document.getElementById('crash-time');
     this.btnCrashRetry = document.getElementById('btn-crash-retry');
     this.btnCrashExit = document.getElementById('btn-crash-return');
+
+    // Landing Quality Banner
+    this.landingBannerEl = document.getElementById('hud-landing-banner');
+    this._landingBannerTimer = null;
   }
 
   reset(mode = 'checkpoint_race', onExitCallback) {
     if (this.resultsModalEl) this.resultsModalEl.classList.add('hidden');
     if (this.crashModalEl) this.crashModalEl.classList.add('hidden');
     if (this.warningEl) this.warningEl.classList.add('hidden');
+    if (this.landingBannerEl) this.landingBannerEl.classList.add('hidden');
+    if (this._landingBannerTimer) { clearTimeout(this._landingBannerTimer); this._landingBannerTimer = null; }
+    this._cache = {}; // Clear DOM cache on reset
 
     const modeNames = {
       checkpoint_race: '🏁 CHECKPOINT RACE',
@@ -94,8 +103,11 @@ export class HUD {
 
   /**
    * Updates all HUD gauges and 2D radar per frame.
+   * DOM writes are throttled via a value cache — only actually written when changed.
    */
   update(dt, physics, checkpointMgr, elapsedMs, inputState = null) {
+    const C = this._cache; // Alias for brevity
+
     // 1. Auto-dismiss instructions
     if (this.instructionTimer > 0) {
       this.instructionTimer -= dt;
@@ -107,99 +119,132 @@ export class HUD {
 
     // 2. Airspeed & Throttle
     const speed = Math.round(physics.speed);
-    if (this.speedValEl) this.speedValEl.textContent = speed;
-    if (this.speedBarEl) {
-      const pct = Math.min(100, Math.max(0, ((speed - 40) / 180) * 100));
-      this.speedBarEl.style.height = `${pct}%`;
+    if (C.speed !== speed) {
+      C.speed = speed;
+      if (this.speedValEl) this.speedValEl.textContent = speed;
+      if (this.speedBarEl) {
+        const pct = Math.min(100, Math.max(0, ((speed - 40) / 180) * 100));
+        this.speedBarEl.style.height = `${pct}%`;
+      }
     }
 
     const throttlePct = Math.round(physics.throttle * 100);
-    if (this.throttleValEl) this.throttleValEl.textContent = `${throttlePct}%`;
-    if (this.throttleBarEl) this.throttleBarEl.style.width = `${throttlePct}%`;
+    if (C.throttle !== throttlePct) {
+      C.throttle = throttlePct;
+      if (this.throttleValEl) this.throttleValEl.textContent = `${throttlePct}%`;
+      if (this.throttleBarEl) this.throttleBarEl.style.width = `${throttlePct}%`;
+    }
 
     // 3. Altitude & Boost
     const alt = Math.round(physics.position.y);
-    if (this.altValEl) this.altValEl.textContent = alt;
-    if (this.altBarEl) {
-      const altPct = Math.min(100, Math.max(0, (alt / 350) * 100));
-      this.altBarEl.style.height = `${altPct}%`;
+    if (C.alt !== alt) {
+      C.alt = alt;
+      if (this.altValEl) this.altValEl.textContent = alt;
+      if (this.altBarEl) {
+        const altPct = Math.min(100, Math.max(0, (alt / 350) * 100));
+        this.altBarEl.style.height = `${altPct}%`;
+      }
     }
 
     if (this.boostValEl && this.boostBarEl) {
-      if (physics.isBoosting) {
-        this.boostValEl.textContent = '⚡ BOOSTING ⚡';
-        this.boostValEl.className = 'gauge-value neon-cyan';
-        const boostPct = (physics.boostTimer / 3.0) * 100;
-        this.boostBarEl.style.width = `${boostPct}%`;
-        this.boostBarEl.className = 'bar-fill cyan-fill';
-      } else if (physics.boostCooldown > 0) {
-        this.boostValEl.textContent = 'RECHARGING...';
-        this.boostValEl.className = 'gauge-value';
-        const rechargePct = ((7.0 - physics.boostCooldown) / 7.0) * 100;
-        this.boostBarEl.style.width = `${rechargePct}%`;
-        this.boostBarEl.className = 'bar-fill';
-      } else {
-        this.boostValEl.textContent = 'READY [SPACE]';
-        this.boostValEl.className = 'gauge-value neon-magenta';
-        this.boostBarEl.style.width = '100%';
-        this.boostBarEl.className = 'bar-fill magenta-fill';
+      const boostState = physics.isBoosting ? 1 : physics.boostCooldown > 0 ? 2 : 0;
+      if (C.boostState !== boostState) {
+        C.boostState = boostState;
+        if (boostState === 1) {
+          this.boostValEl.textContent = '⚡ BOOSTING ⚡';
+          this.boostValEl.className = 'gauge-value neon-cyan';
+          this.boostBarEl.className = 'bar-fill cyan-fill';
+        } else if (boostState === 2) {
+          this.boostValEl.textContent = 'RECHARGING...';
+          this.boostValEl.className = 'gauge-value';
+          this.boostBarEl.className = 'bar-fill';
+        } else {
+          this.boostValEl.textContent = 'READY [SPACE]';
+          this.boostValEl.className = 'gauge-value neon-magenta';
+          this.boostBarEl.className = 'bar-fill magenta-fill';
+        }
       }
+      // Boost bar progress still updates continuously
+      if (physics.isBoosting) {
+        this.boostBarEl.style.width = `${(physics.boostTimer / 3.0) * 100}%`;
+      } else if (physics.boostCooldown > 0) {
+        this.boostBarEl.style.width = `${((7.0 - physics.boostCooldown) / 7.0) * 100}%`;
+      } else {
+        if (C.boostFull !== true) { C.boostFull = true; this.boostBarEl.style.width = '100%'; }
+      }
+      if (boostState !== 0) C.boostFull = false;
     }
 
     // 4. Compass Heading Tape
     if (this.compassStripEl) {
-      // Convert Euler Y (radians) to degrees 0..360
-      let headingDeg = (360 - (physics.euler.y * (180 / Math.PI))) % 360;
-      if (headingDeg < 0) headingDeg += 360;
-      // Map 0..360 to translateX offset
-      const offset = (headingDeg / 360) * 360;
-      this.compassStripEl.style.transform = `translateX(-${offset}px)`;
+      const headingDeg = ((360 - (physics.euler.y * (180 / Math.PI))) % 360 + 360) % 360;
+      const offset = Math.round((headingDeg / 360) * 360);
+      if (C.compassOffset !== offset) {
+        C.compassOffset = offset;
+        this.compassStripEl.style.transform = `translateX(-${offset}px)`;
+      }
     }
 
     // 5. Stall Warning Banner
     if (this.warningEl) {
-      if (physics.isStalling) {
-        this.warningEl.classList.remove('hidden');
-      } else {
-        this.warningEl.classList.add('hidden');
+      if (C.isStalling !== physics.isStalling) {
+        C.isStalling = physics.isStalling;
+        if (physics.isStalling) this.warningEl.classList.remove('hidden');
+        else this.warningEl.classList.add('hidden');
       }
     }
 
     // 6. Checkpoints, Timer, Score & Combo
-    if (this.checkpointsEl) {
-      if (checkpointMgr.totalCheckpoints > 0) {
-        this.checkpointsEl.textContent = `${checkpointMgr.checkpointsHit} / ${checkpointMgr.totalCheckpoints}`;
-      } else {
-        this.checkpointsEl.textContent = `${checkpointMgr.checkpointsHit} (ENDLESS)`;
-      }
+    const cpText = checkpointMgr.totalCheckpoints > 0
+      ? `${checkpointMgr.checkpointsHit} / ${checkpointMgr.totalCheckpoints}`
+      : `${checkpointMgr.checkpointsHit} (ENDLESS)`;
+    if (this.checkpointsEl && C.cpText !== cpText) {
+      C.cpText = cpText;
+      this.checkpointsEl.textContent = cpText;
     }
 
     if (this.timerEl) {
       const totalSec = elapsedMs / 1000;
       const min = Math.floor(totalSec / 60).toString().padStart(2, '0');
       const sec = (totalSec % 60).toFixed(1).padStart(4, '0');
-      this.timerEl.textContent = `${min}:${sec}`;
+      const timerText = `${min}:${sec}`;
+      if (C.timerText !== timerText) { C.timerText = timerText; this.timerEl.textContent = timerText; }
     }
 
     if (this.scoreEl && this.comboEl) {
-      this.scoreEl.firstChild.textContent = `${checkpointMgr.score.toLocaleString()} `;
-      this.comboEl.textContent = `x${checkpointMgr.combo}`;
-      this.comboEl.style.display = checkpointMgr.combo > 1 ? 'inline-block' : 'none';
+      const scoreVal = checkpointMgr.score;
+      const comboVal = checkpointMgr.combo;
+      if (C.score !== scoreVal) { C.score = scoreVal; this.scoreEl.firstChild.textContent = `${scoreVal.toLocaleString()} `; }
+      if (C.combo !== comboVal) {
+        C.combo = comboVal;
+        this.comboEl.textContent = `x${comboVal}`;
+        this.comboEl.style.display = comboVal > 1 ? 'inline-block' : 'none';
+      }
     }
 
-    // 7. Status Indicators (Gear, Flaps, Airbrakes)
+    // 7. Status Indicators (Gear, Flaps, Airbrakes) — update only on state change
     if (this.gearIndEl) {
-      this.gearIndEl.textContent = `GEAR: ${physics.gearDown ? 'DOWN' : 'UP'}`;
-      this.gearIndEl.className = physics.gearDown ? 'hud-ind active-green' : 'hud-ind';
+      const gearDown = physics.gearDown;
+      if (C.gearDown !== gearDown) {
+        C.gearDown = gearDown;
+        this.gearIndEl.textContent = `GEAR: ${gearDown ? 'DOWN' : 'UP'}`;
+        this.gearIndEl.className = gearDown ? 'hud-ind active-green' : 'hud-ind';
+      }
     }
     if (this.flapsIndEl) {
-      const flapLabels = ['FLAPS: UP (0%)', 'FLAPS: TO (20%)', 'FLAPS: LDG (40%)'];
-      this.flapsIndEl.textContent = flapLabels[physics.flapsLevel] || flapLabels[0];
-      this.flapsIndEl.className = physics.flapsLevel > 0 ? 'hud-ind active-blue' : 'hud-ind';
+      if (C.flapsLevel !== physics.flapsLevel) {
+        C.flapsLevel = physics.flapsLevel;
+        const flapLabels = ['FLAPS: UP (0%)', 'FLAPS: TO (20%)', 'FLAPS: LDG (40%)'];
+        this.flapsIndEl.textContent = flapLabels[physics.flapsLevel] || flapLabels[0];
+        this.flapsIndEl.className = physics.flapsLevel > 0 ? 'hud-ind active-blue' : 'hud-ind';
+      }
     }
     if (this.airbrakeIndEl) {
-      this.airbrakeIndEl.textContent = `BRK: ${physics.airbrakeActive ? 'ON' : 'OFF'}`;
-      this.airbrakeIndEl.className = physics.airbrakeActive ? 'hud-ind active-red blink' : 'hud-ind';
+      if (C.airbrake !== physics.airbrakeActive) {
+        C.airbrake = physics.airbrakeActive;
+        this.airbrakeIndEl.textContent = `BRK: ${physics.airbrakeActive ? 'ON' : 'OFF'}`;
+        this.airbrakeIndEl.className = physics.airbrakeActive ? 'hud-ind active-red blink' : 'hud-ind';
+      }
     }
 
     // 8. Virtual Mouse Aim Crosshair
@@ -372,5 +417,33 @@ export class HUD {
 
       this.crashModalEl.classList.remove('hidden');
     }
+  }
+
+  /**
+   * Displays a temporary centered landing quality banner for 2.5 seconds.
+   * @param {string} text - Banner text e.g. '✅ SMOOTH LANDING'
+   * @param {string} color - CSS color string
+   */
+  showLandingBanner(text, color) {
+    if (!this.landingBannerEl) return;
+    if (this._landingBannerTimer) clearTimeout(this._landingBannerTimer);
+
+    this.landingBannerEl.textContent = text;
+    this.landingBannerEl.style.color = color;
+    this.landingBannerEl.style.borderColor = color;
+    this.landingBannerEl.style.opacity = '1';
+    this.landingBannerEl.style.transform = 'translate(-50%, -50%) scale(1)';
+    this.landingBannerEl.classList.remove('hidden');
+
+    this._landingBannerTimer = setTimeout(() => {
+      if (this.landingBannerEl) {
+        this.landingBannerEl.style.opacity = '0';
+        this.landingBannerEl.style.transform = 'translate(-50%, -50%) scale(0.85)';
+        setTimeout(() => {
+          if (this.landingBannerEl) this.landingBannerEl.classList.add('hidden');
+        }, 450);
+      }
+      this._landingBannerTimer = null;
+    }, 2500);
   }
 }

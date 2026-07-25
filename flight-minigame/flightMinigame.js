@@ -29,6 +29,9 @@ export class FlightMinigame {
     this.startTime = 0;
     this.elapsedMs = 0;
 
+    this._crashTriggered = false;
+    this._lastLandingState = null; // Track landing state to detect new touchdown events
+
     this.loop = this.loop.bind(this);
     this.handleInteraction = this.handleInteraction.bind(this);
   }
@@ -70,7 +73,7 @@ export class FlightMinigame {
   start() {
     if (this.isRunning) this.stopLoop();
 
-    const startOnRunway = true; // Always start at rest on the runway tarmac so the aircraft never moves on its own!
+    const startOnRunway = true;
     const startPos = new THREE.Vector3(0, 4.4, 750);
     this.physics.reset(startPos, 0, startOnRunway);
     this.sceneSetup.resetAircraftVisuals();
@@ -78,6 +81,7 @@ export class FlightMinigame {
     this.input.attachListeners();
 
     this._crashTriggered = false;
+    this._lastLandingState = null;
     this.isRunning = true;
     this.startTime = performance.now();
     this.lastTime = this.startTime;
@@ -149,6 +153,22 @@ export class FlightMinigame {
         });
       }, 1600);
     }
+
+    // Check for Landing Events (new touchdown edge detection)
+    const currentLandingState = this.physics.landingState;
+    if (currentLandingState && currentLandingState !== this._lastLandingState) {
+      this._lastLandingState = currentLandingState;
+      if (currentLandingState === 'ok') {
+        console.log(`[FlightMinigame] Smooth touchdown! Vspd: ${this.physics.touchdownVerticalSpeed.toFixed(1)} m/s, ${Math.round(this.physics.touchdownAirspeed)} kts`);
+        audioSynth.playCheckpointChime(1);
+        this.hud.showLandingBanner('✅ SMOOTH LANDING', '#00ff88');
+      } else if (currentLandingState === 'rough') {
+        console.log(`[FlightMinigame] Rough touchdown! Vspd: ${this.physics.touchdownVerticalSpeed.toFixed(1)} m/s, ${Math.round(this.physics.touchdownAirspeed)} kts`);
+        audioSynth.playBoostWhoosh();
+        this.hud.showLandingBanner('⚠️ ROUGH LANDING', '#ffaa00');
+      }
+    }
+    if (!this.physics.landingState) this._lastLandingState = null;
 
     // 3. Update Checkpoint / Obstacle collisions
     const event = this.checkpointMgr.update(dt, this.physics);

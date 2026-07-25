@@ -212,12 +212,12 @@ export class CheckpointManager {
       }
     }
 
-    // 2. Animate target ring pulsing
+    // 2. Animate target ring pulsing (compute once per frame, not per ring)
     if ((this.mode === 'checkpoint_race' || this.mode === 'runway_takeoff') && this.currentIndex < this.rings.length) {
       const activeRing = this.rings[this.currentIndex];
       if (activeRing && !activeRing.userData.collected) {
         const pulse = 1.0 + Math.sin(Date.now() * 0.006) * 0.12;
-        activeRing.scale.set(pulse, pulse, pulse);
+        activeRing.scale.setScalar(pulse);
       }
     }
 

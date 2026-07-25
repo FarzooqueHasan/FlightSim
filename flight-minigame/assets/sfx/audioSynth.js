@@ -180,6 +180,32 @@ export class AudioSynth {
     });
   }
 
+  /**
+   * Plays a dramatic descending crash/failure stinger.
+   * @param {number} baseFreq - Starting frequency in Hz
+   * @param {number} volume - Gain 0..1
+   * @param {string} type - Oscillator type ('sawtooth'|'square'|'sine')
+   */
+  playStinger(baseFreq = 150, volume = 0.8, type = 'sawtooth') {
+    if (!this.isInitialized || !this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.15, now + 1.4);
+
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.6);
+  }
+
   stopAll() {
     if (this.engineGain && this.ctx) {
       this.engineGain.gain.setValueAtTime(0, this.ctx.currentTime);

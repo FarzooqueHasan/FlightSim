@@ -1002,3 +1002,26 @@ kbd {
   .sidebar-panel { flex: 1; }
   .hud-left-panel, .hud-right-panel { transform: scale(0.85); top: 40%; }
 }
+
+/* Landing Quality Banner */
+.landing-banner {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  z-index: 25;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  padding: 14px 36px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 30px currentColor;
+  pointer-events: none;
+  white-space: nowrap;
+  text-align: center;
+}
