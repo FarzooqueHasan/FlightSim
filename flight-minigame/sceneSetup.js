@@ -50,7 +50,7 @@ export class SceneSetup {
     // 1. Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit to 1.5x for buttery smooth 60 FPS!
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -264,53 +264,79 @@ export class SceneSetup {
     runway.receiveShadow = true;
     airportGroup.add(runway);
 
-    // 2. Runway Centerline Dashed Stripes & Threshold Markings
+    // 2. Runway Centerline Dashed Stripes & Threshold Markings using InstancedMesh (2 draw calls instead of 42!)
     const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const stripeGeo = new THREE.PlaneGeometry(3.5, 35);
+    stripeGeo.rotateX(-Math.PI / 2);
+    const stripeCount = Math.floor((720 - (-1320)) / 80) + 1;
+    const stripeInstanced = new THREE.InstancedMesh(stripeGeo, stripeMat, stripeCount);
+    let sIdx = 0;
+    const dummy = new THREE.Object3D();
     for (let z = 720; z >= -1320; z -= 80) {
-      const stripeGeo = new THREE.PlaneGeometry(3.5, 35);
-      stripeGeo.rotateX(-Math.PI / 2);
-      const stripe = new THREE.Mesh(stripeGeo, stripeMat);
-      stripe.position.set(0, 1.65, z);
-      airportGroup.add(stripe);
+      dummy.position.set(0, 1.65, z);
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      stripeInstanced.setMatrixAt(sIdx++, dummy.matrix);
     }
+    airportGroup.add(stripeInstanced);
 
     // Threshold piano keys (white bars at runway ends)
+    const keyGeo = new THREE.PlaneGeometry(6, 40);
+    keyGeo.rotateX(-Math.PI / 2);
+    const keyPositions = [];
     [-1380, 780].forEach(zPos => {
       for (let x = -45; x <= 45; x += 12) {
-        const keyGeo = new THREE.PlaneGeometry(6, 40);
-        keyGeo.rotateX(-Math.PI / 2);
-        const key = new THREE.Mesh(keyGeo, stripeMat);
-        key.position.set(x, 1.66, zPos);
-        airportGroup.add(key);
+        keyPositions.push({ x, z: zPos });
       }
     });
+    const keyInstanced = new THREE.InstancedMesh(keyGeo, stripeMat, keyPositions.length);
+    keyPositions.forEach((pos, i) => {
+      dummy.position.set(pos.x, 1.66, pos.z);
+      dummy.updateMatrix();
+      keyInstanced.setMatrixAt(i, dummy.matrix);
+    });
+    airportGroup.add(keyInstanced);
 
-    // 3. Runway & Approach Lighting System
+    // 3. Runway & Approach Lighting System using InstancedMesh (3 draw calls instead of 66!)
     const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x00ff44 });
     const whiteLightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff1122 });
-    const lightSphere = new THREE.SphereGeometry(1.5, 8, 8);
+    const lightBox = new THREE.BoxGeometry(2, 2, 2);
 
-    // Green threshold approach lights
+    // Green threshold approach lights (11 lights)
+    const greenInstanced = new THREE.InstancedMesh(lightBox, greenLightMat, 11);
+    let gIdx = 0;
     for (let x = -55; x <= 55; x += 11) {
-      const gLight = new THREE.Mesh(lightSphere, greenLightMat);
-      gLight.position.set(x, 2.5, 795);
-      airportGroup.add(gLight);
+      dummy.position.set(x, 2.5, 795);
+      dummy.updateMatrix();
+      greenInstanced.setMatrixAt(gIdx++, dummy.matrix);
     }
-    // Red departure end lights
+    airportGroup.add(greenInstanced);
+
+    // Red departure end lights (11 lights)
+    const redInstanced = new THREE.InstancedMesh(lightBox, redLightMat, 11);
+    let rIdx = 0;
     for (let x = -55; x <= 55; x += 11) {
-      const rLight = new THREE.Mesh(lightSphere, redLightMat);
-      rLight.position.set(x, 2.5, -1395);
-      airportGroup.add(rLight);
+      dummy.position.set(x, 2.5, -1395);
+      dummy.updateMatrix();
+      redInstanced.setMatrixAt(rIdx++, dummy.matrix);
     }
-    // White side edge lights along runway
+    airportGroup.add(redInstanced);
+
+    // White side edge lights along runway (44 lights)
+    const whiteCount = Math.floor((750 - (-1350)) / 100) + 1;
+    const whiteInstanced = new THREE.InstancedMesh(lightBox, whiteLightMat, whiteCount * 2);
+    let wIdx = 0;
     for (let z = 750; z >= -1350; z -= 100) {
-      const leftLight = new THREE.Mesh(lightSphere, whiteLightMat);
-      leftLight.position.set(-58, 2.2, z);
-      const rightLight = new THREE.Mesh(lightSphere, whiteLightMat);
-      rightLight.position.set(58, 2.2, z);
-      airportGroup.add(leftLight, rightLight);
+      dummy.position.set(-58, 2.2, z);
+      dummy.updateMatrix();
+      whiteInstanced.setMatrixAt(wIdx++, dummy.matrix);
+      dummy.position.set(58, 2.2, z);
+      dummy.updateMatrix();
+      whiteInstanced.setMatrixAt(wIdx++, dummy.matrix);
     }
+    airportGroup.add(whiteInstanced);
 
     // 4. Control Tower & Terminal Facility (located at X: 140, Z: 100)
     const towerShaftGeo = new THREE.CylinderGeometry(8, 12, 65, 12);
@@ -425,31 +451,42 @@ export class SceneSetup {
       this.warningBeacons.push(bcon);
     });
 
-    // 3. Evergreen Trees Scattered Across Valleys
+    // 3. Evergreen Trees Scattered Across Valleys using InstancedMesh (2 draw calls instead of 180!)
     const trunkGeo = new THREE.CylinderGeometry(0.8, 1.2, 8, 5);
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3525, roughness: 0.9 });
     const foliageGeo = new THREE.ConeGeometry(5, 14, 6);
     const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1e4a20, roughness: 0.8, flatShading: true });
 
+    const treePositions = [];
     for (let i = 0; i < 90; i++) {
       const tx = (Math.random() - 0.5) * 2600;
       const tz = (Math.random() - 0.5) * 2600;
-      // Keep away from runway strip
       if (Math.abs(tx) < 220 && tz > -1600 && tz < 900) continue;
-
       const ty = this.getTerrainHeightAt(tx, tz);
-      if (ty < 18 || ty > 110) continue; // Only plant trees on green hillsides
-
-      const tree = new THREE.Group();
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 4;
-      const foliage = new THREE.Mesh(foliageGeo, foliageMat);
-      foliage.position.y = 13;
-      tree.add(trunk, foliage);
-      tree.position.set(tx, ty, tz);
+      if (ty < 18 || ty > 110) continue;
       const scale = 0.7 + Math.random() * 0.6;
-      tree.scale.set(scale, scale, scale);
-      landmarkGroup.add(tree);
+      treePositions.push({ x: tx, y: ty, z: tz, scale });
+    }
+
+    const numTrees = treePositions.length;
+    if (numTrees > 0) {
+      const trunkInstanced = new THREE.InstancedMesh(trunkGeo, trunkMat, numTrees);
+      const foliageInstanced = new THREE.InstancedMesh(foliageGeo, foliageMat, numTrees);
+      const dummy = new THREE.Object3D();
+
+      treePositions.forEach((pos, idx) => {
+        dummy.position.set(pos.x, pos.y + 4 * pos.scale, pos.z);
+        dummy.scale.set(pos.scale, pos.scale, pos.scale);
+        dummy.rotation.set(0, Math.random() * Math.PI, 0);
+        dummy.updateMatrix();
+        trunkInstanced.setMatrixAt(idx, dummy.matrix);
+
+        dummy.position.set(pos.x, pos.y + 13 * pos.scale, pos.z);
+        dummy.updateMatrix();
+        foliageInstanced.setMatrixAt(idx, dummy.matrix);
+      });
+
+      landmarkGroup.add(trunkInstanced, foliageInstanced);
     }
 
     this.scene.add(landmarkGroup);
@@ -461,37 +498,36 @@ export class SceneSetup {
       color: 0xffffff,
       roughness: 0.8,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.8,
       flatShading: true
     });
-
-    // Spawn 60 fluffy cloud clusters
-    for (let i = 0; i < 60; i++) {
-      const cluster = new THREE.Group();
-      const numPuffs = 5 + Math.floor(Math.random() * 6);
+    // Use low-poly DodecahedronGeometry (0 subdivisions = 12 faces instead of 80 faces!) and 1 InstancedMesh for all 120 puffs!
+    const puffGeo = new THREE.DodecahedronGeometry(45, 0);
+    const cloudInstanced = new THREE.InstancedMesh(puffGeo, cloudMat, 120);
+    const dummy = new THREE.Object3D();
+    let idx = 0;
+    
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const dist = 600 + Math.random() * 2400;
+      const cx = Math.cos(angle) * dist;
+      const cy = 200 + Math.random() * 250;
+      const cz = Math.sin(angle) * dist;
       
-      for (let j = 0; j < numPuffs; j++) {
-        const radius = 30 + Math.random() * 40;
-        const puffGeo = new THREE.DodecahedronGeometry(radius, 1);
-        const puff = new THREE.Mesh(puffGeo, cloudMat);
-        puff.position.set(
-          (Math.random() - 0.5) * 90,
-          (Math.random() - 0.5) * 25,
-          (Math.random() - 0.5) * 90
+      for (let j = 0; j < 4; j++) {
+        dummy.position.set(
+          cx + (Math.random() - 0.5) * 120,
+          cy + (Math.random() - 0.5) * 35,
+          cz + (Math.random() - 0.5) * 120
         );
-        cluster.add(puff);
+        const s = 0.6 + Math.random() * 0.8;
+        dummy.scale.set(s, s * 0.7, s);
+        dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+        dummy.updateMatrix();
+        cloudInstanced.setMatrixAt(idx++, dummy.matrix);
       }
-
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 400 + Math.random() * 2600;
-      cluster.position.set(
-        Math.cos(angle) * dist,
-        180 + Math.random() * 280,
-        Math.sin(angle) * dist
-      );
-      this.cloudGroup.add(cluster);
     }
-
+    this.cloudGroup.add(cloudInstanced);
     this.scene.add(this.cloudGroup);
   }
 

@@ -80,6 +80,7 @@ export class FlightPhysics {
     this.boostTimer = 0;
     this.boostCooldown = 0;
     this.isStalling = false;
+    this.isOnGround = startOnRunway;
 
     // Crash State
     this.isCrashed = false;
@@ -108,10 +109,10 @@ export class FlightPhysics {
     this.updateThrottleAndBoost(dt, input);
 
     // 2. Calculate target angular velocities from input
-    // Flaps and low airspeed reduce aerodynamic control authority slightly
     const controlAuthority = Math.min(1.2, Math.max(0.4, (this.speed / 100)));
-    const targetPitchRate = input.pitch * (FLIGHT_CONFIG.PITCH_RATE_DEG * DEG2RAD) * controlAuthority;
-    const targetRollRate = input.roll * (FLIGHT_CONFIG.ROLL_RATE_DEG * DEG2RAD) * controlAuthority;
+    // When on the ground, prevent rolling into tarmac and only allow pitch up (climb rotation) for takeoff!
+    const targetPitchRate = this.isOnGround ? Math.max(0, input.pitch * (FLIGHT_CONFIG.PITCH_RATE_DEG * DEG2RAD) * controlAuthority) : input.pitch * (FLIGHT_CONFIG.PITCH_RATE_DEG * DEG2RAD) * controlAuthority;
+    const targetRollRate = this.isOnGround ? 0 : input.roll * (FLIGHT_CONFIG.ROLL_RATE_DEG * DEG2RAD) * controlAuthority;
     const targetYawRate = input.yaw * (FLIGHT_CONFIG.YAW_RATE_DEG * DEG2RAD) * controlAuthority;
 
     // Smoothly lerp angular velocities toward targets (damping)
@@ -145,20 +146,17 @@ export class FlightPhysics {
       this.euler.z -= this.euler.z * Math.min(1.0, FLIGHT_CONFIG.AUTO_LEVEL_RATE * dt);
     }
 
-    // 4. Stall Physics & Buffet (When airspeed drops or AoA is too high)
+    // 4. Stall Physics & Buffet (Only in air! Never stall while taxiing on ground!)
     const currentStallSpeed = this.flapsLevel > 0 ? FLIGHT_CONFIG.STALL_SPEED_FLAPS : FLIGHT_CONFIG.STALL_SPEED_CLEAN;
-    if (this.speed < currentStallSpeed || this.aoa > FLIGHT_CONFIG.CRITICAL_AOA) {
+    if (!this.isOnGround && (this.speed < currentStallSpeed || this.aoa > FLIGHT_CONFIG.CRITICAL_AOA)) {
       this.isStalling = true;
       this.isBuffeting = true;
-      // Sink downward due to lift loss
       this.velocity.y -= FLIGHT_CONFIG.STALL_DRIFT * (1 - (this.speed / currentStallSpeed)) * dt * 10;
-      // Force nose down pitch recovery
       this.euler.x -= 0.4 * dt;
-      // Random turbulence buffet shaking
       this.euler.z += (Math.random() - 0.5) * 0.05;
     } else {
       this.isStalling = false;
-      this.isBuffeting = this.aoa > FLIGHT_CONFIG.CRITICAL_AOA * 0.8;
+      this.isBuffeting = !this.isOnGround && (this.aoa > FLIGHT_CONFIG.CRITICAL_AOA * 0.8);
     }
 
     // Convert updated Euler back to Quaternion
@@ -183,11 +181,11 @@ export class FlightPhysics {
       const terrainHeight = sceneSetup.getTerrainHeightAt(this.position.x, this.position.z);
       minAltitude = Math.max(5, terrainHeight + 2.8); // Add aircraft clearance
       
-      // Check if inside Runway coordinates (X: -60 to +60, Z: -1400 to +800)
       if (Math.abs(this.position.x) <= 60 && this.position.z >= -1400 && this.position.z <= 800) {
         isOnRunwayTarmac = true;
       }
     }
+    this.isOnGround = this.position.y <= minAltitude + 0.6;
 
     // Ground & Runway Contact Handling
     if (this.position.y <= minAltitude) {
@@ -246,7 +244,8 @@ export class FlightPhysics {
     if (this.gearDown) maxEffectiveSpeed *= 0.88;
     if (this.airbrakeActive) maxEffectiveSpeed *= 0.55;
 
-    let targetSpeed = FLIGHT_CONFIG.MIN_SPEED + this.throttle * (maxEffectiveSpeed - FLIGHT_CONFIG.MIN_SPEED);
+    let minSpeed = this.isOnGround ? 0 : FLIGHT_CONFIG.MIN_SPEED;
+    let targetSpeed = minSpeed + this.throttle * (maxEffectiveSpeed - minSpeed);
     if (this.isBoosting) {
       targetSpeed = FLIGHT_CONFIG.MAX_SPEED * FLIGHT_CONFIG.BOOST_MULTIPLIER;
     }

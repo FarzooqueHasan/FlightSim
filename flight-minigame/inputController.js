@@ -6,7 +6,7 @@ export class InputController {
   constructor() {
     this.keys = {};
     this.mouseState = { x: 0, y: 0, isDown: false };
-    this.useMouseControl = true; // Default to Mouse Aim for silky smooth AAA control
+    this.useMouseControl = false; // Default to false so standard keyboard controls work smoothly without mouse interference!
     
     // One-shot triggers
     this.cameraToggleRequested = false;
@@ -127,18 +127,21 @@ export class InputController {
     if (this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.keys['Shift']) throttleDelta += 1.0;
     if (this.keys['ControlLeft'] || this.keys['ControlRight'] || this.keys['Control']) throttleDelta -= 1.0;
 
-    // Boost: Space or Mouse Click
-    if (this.keys['Space'] || (this.useMouseControl && this.mouseState.isDown)) boost = true;
+    // Boost: Space
+    if (this.keys['Space']) boost = true;
 
     // Airbrake: B
     if (this.keys['KeyB'] || this.keys['b']) airbrake = true;
 
-    // --- MOUSE FLIGHT YOKE AIM MODE ---
+    // --- MOUSE FLIGHT YOKE AIM MODE (Toggled via M) ---
     if (this.useMouseControl) {
-      // Smoothly map mouse offset to roll and pitch
-      roll += this.mouseState.x * 1.25;
-      pitch -= this.mouseState.y * 1.25; // Screen up (negative Y) = climb (+pitch)
-      yaw += this.mouseState.x * 0.45; // Auto-rudder coordination
+      const deadzone = 0.08;
+      const x = Math.abs(this.mouseState.x) > deadzone ? (this.mouseState.x > 0 ? this.mouseState.x - deadzone : this.mouseState.x + deadzone) : 0;
+      const y = Math.abs(this.mouseState.y) > deadzone ? (this.mouseState.y > 0 ? this.mouseState.y - deadzone : this.mouseState.y + deadzone) : 0;
+
+      roll += x * 1.35;
+      pitch -= y * 1.35; // Screen up (negative Y) = climb (+pitch)
+      yaw += x * 0.45; // Auto-rudder coordination
     }
 
     // --- GAMEPAD INPUTS (HTML5 API Polling) ---

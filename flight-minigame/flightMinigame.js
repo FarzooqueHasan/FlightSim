@@ -70,8 +70,8 @@ export class FlightMinigame {
   start() {
     if (this.isRunning) this.stopLoop();
 
-    const startOnRunway = this.mode === 'runway_takeoff';
-    const startPos = startOnRunway ? new THREE.Vector3(0, 4.4, 750) : new THREE.Vector3(0, 150, 0);
+    const startOnRunway = true; // Always start at rest on the runway tarmac so the aircraft never moves on its own!
+    const startPos = new THREE.Vector3(0, 4.4, 750);
     this.physics.reset(startPos, 0, startOnRunway);
     this.sceneSetup.resetAircraftVisuals();
     this.checkpointMgr.reset();
